@@ -1,5 +1,6 @@
 # -*- encoding: utf-8 -*-
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import time
 from report import report_sxw
 import pooler
@@ -74,7 +75,45 @@ class Parser(report_sxw.rml_parse):
 #             period_names['p' + `i`] = datetime.strptime(period.date_start, '%Y-%m-%d').strftime('%B')
 #         res.append(period_names)
 #         return res
-# 
+
+    def _get_move_qty_data(self, cr, uid, product_ids, context=None):
+        res = []
+        results = []
+        results2 = []
+        #states = ('done',)
+        #what = ('in','out',)
+        int_loc_ids = self.pool.get('stock.location').search(cr, uid, [('usage','=','internal')])
+        #params = [tuple(int_loc_ids,), tuple(int_loc_ids,), tuple(product_ids,), tuple(states)]
+        params = [tuple(int_loc_ids,), tuple(int_loc_ids,), tuple(product_ids,)]
+        #if 'in' in what:
+        sql = """
+            select m.product_id, sum(m.product_qty / u.factor) 
+            from stock_move m
+            left join product_uom u on (m.product_uom = u.id)
+            where location_id NOT IN %s
+            and location_dest_id IN %s
+            and product_id IN %s
+            and state NOT IN ('done', 'cancel')
+            group by product_id
+            """ % (tuple(params))
+        cr.execute(sql)
+        results = cr.dictfetchall()
+        res.append(results)
+#         if 'out' in what:
+#             cr.execute(
+#                 "select sum(r.product_qty / u.factor), r.product_id "
+#                 "from stock_move r left join product_uom u on (r.product_uom=u.id) "
+#                 "where location_id IN %s"
+#                 "and location_dest_id NOT IN %s"
+#                 "and product_id IN %s"
+#                 "and state IN %s"
+#                 "group by product_id",tuple(where))
+#             results2 = cr.dictfetchone()
+          
+        return res
+
+
+
 #     def _get_sales_data(self, cr, uid, period_ids, sale_id, context=None):
 #         if not sale_id:
 #             sql = """
@@ -102,11 +141,43 @@ class Parser(report_sxw.rml_parse):
 #                 """ % (str(tuple(period_ids)), sale_id)
 #         cr.execute(sql)
 #         return cr.dictfetchall()
-# 
-#     def _get_lines(self, cr, uid, sales_data, period_ids, year_id, eff_periods, context=None):
-#         res = []
-#         line_vals = {}
-# 
+
+  
+    def _get_product_ids(self, cr, uid, category_id, context=None):
+        categ = self.pool.get('product.category').browse(cr, uid, category_id)
+        min = categ.parent_left
+        max = categ.parent_right
+        prod_obj = self.pool.get('product.product')
+        return prod_obj.search(cr, uid, [('sale_ok','=',True),('type','=','product'),('categ_id','>=',min),('categ_id','<=',max)])
+ 
+    def _get_periods(self, cr, uid, threshold_date, context=None):
+        res = []
+        threshold_date = datetime.strptime(threshold_date, '%Y-%m-%d')
+        i = 0
+        for _ in xrange(5):
+            i += 1
+            if i == 1:
+                start_date = threshold_date - relativedelta(years=100)
+                end_date = 
+            dates[i] = {
+                'start': 
+            } 
+        return res
+ 
+    def _get_lines(self, cr, uid, threshold_date, category_id, context=None):
+        res = []
+        line_vals = {}
+        product_ids = self._get_product_ids(cr, uid, category_id, context=None)
+        prod_obj = self.pool.get('product.product')
+        periods = self._get_periods(cr, uid, threshold_date, context=None)
+        move_qty_data = self._get_move_qty_data(cr, uid, product_ids, context=None)
+        for prod in prod_obj.browse(cr, uid, product_ids):
+            line_vals[prod.id] = {
+                'name': prod.name,
+                'categ': prod.categ_id.complete_name,
+                'qoh': prod.qty_available,
+            }
+
 #         map = {}  # mapping between period id and report context
 #         i = 1
 #         for period in period_ids:
@@ -156,11 +227,14 @@ class Parser(report_sxw.rml_parse):
 #                 line_vals[i]['avg_prev_year'] = line_vals[i]['prev_fy'] / 12
 #                 line_vals[i]['ratio'] = line_vals[i]['avg_curr_year'] / line_vals[i]['avg_prev_year']
 # 
-#         # only append values (without key) to form the list
-#         for k, v in line_vals.iteritems():
-#             res.append(v)
-#         res = sorted(res, key=lambda k: k['total'], reverse=True)
-#         return res
+
+        # only append values (without key) to form the list
+        for k, v in line_vals.iteritems():
+            res.append(v)
+#         res = sorted(res, key=lambda k: k['category'])
+        return res
+
+
 #     
 #     def _get_eff_periods(self, cr, uid, year_id, context=None):
 #         res = 0
@@ -233,7 +307,7 @@ class Parser(report_sxw.rml_parse):
 
         page['header'] = self._get_header_info(cr, uid, threshold_date, category_id, context=None)
         page['line_title'] = [{'threshold_date': 'xxxx'}]
-        page['lines'] = [{'line': 'aaa'}]
+        page['lines'] = self._get_lines(cr, uid, threshold_date, category_id, context=None)
 #         period_ids = self._get_period_ids(cr, uid, year_id, context=None)
 #         sales_data = self._get_sales_data(cr, uid, period_ids, sale_id, context=None)
 # 
