@@ -5,11 +5,7 @@ import time
 from report import report_sxw
 import pooler
 import logging
-import netsvc
 import tools
-from tools import amount_to_text_en
-import copy
-from collections import Counter
 import pytz
 from openerp import SUPERUSER_ID
 
@@ -59,12 +55,9 @@ class Parser(report_sxw.rml_parse):
 
     def _get_move_qty_data(self, cr, uid, product_ids, periods, line_vals, context=None):
         res = []
-        #line_vals = {}
-        #move_qty_data = {}
         int_loc_ids = self.pool.get('stock.location').search(cr, uid, [('usage','=','internal')])
         i = 0
         for _ in xrange(7):
-            #i += 1
             date_from = "'"+str(periods[i]['start'])+"'"
             date_to = "'"+str(periods[i]['end'])+"'"
             
@@ -89,9 +82,6 @@ class Parser(report_sxw.rml_parse):
                 data = cr.dictfetchall()
                 for rec in data:
                     prod = rec['product_id']
-                    #line_vals[product_id] = {
-                    #    what+`i`: rec['sum'],
-                    #}
                     line_vals[prod][what+`i`] = rec['sum'] 
             i += 1
         for prod in line_vals:
@@ -135,12 +125,12 @@ class Parser(report_sxw.rml_parse):
             i += 1
         return periods
  
-    def _get_lines(self, cr, uid, current_date_utc, threshold_date_utc, category_id, context=None):
+    def _get_lines(self, cr, uid, periods, current_date_utc, threshold_date_utc, category_id, context=None):
         res = []
         line_vals = {}
         product_ids = self._get_product_ids(cr, uid, category_id, context=None)
         prod_obj = self.pool.get('product.product')
-        periods = self._get_periods(cr, uid, current_date_utc, threshold_date_utc, context=None)
+        #periods = self._get_periods(cr, uid, current_date_utc, threshold_date_utc, context=None)
 
         for prod in prod_obj.browse(cr, uid, product_ids):
             line_vals[prod.id] = {
@@ -176,13 +166,27 @@ class Parser(report_sxw.rml_parse):
         res = sorted(res, key=lambda k: k['categ'])
         return res
 
-#     def _get_current_date_local(self, cr, uid, current_date_local, tz, context=None)
-#         return current_date_local.astimezone(pytz.utc)
-
     def _get_threshold_date_utc(self, cr, uid, threshold_date, tz, context=None):
         threshold_date = datetime.strptime(threshold_date, '%Y-%m-%d')
         threshold_date_local = tz.localize(threshold_date, is_dst=None)
         return threshold_date_local.astimezone(pytz.utc)
+
+    def _get_line_title(self, cr, uid, periods, tz, context=None):
+        line_title = []
+        title_vals = {}
+        for p in periods:
+            if p >= 2:
+                if p == 2:
+                    start = ''
+                else:
+                    start =  datetime.strftime(periods[p]['start'].astimezone(tz), '%Y-%m-%d')
+                if p == 6:
+                    end = ''
+                else:
+                    end =  datetime.strftime(periods[p]['end'].astimezone(tz) - relativedelta(days=1), '%Y-%m-%d')
+                title_vals['p'+`p`] = start + ' ~ ' + end
+        line_title.append(title_vals)                
+        return line_title
 
     def print_projection(self, data):
         res = []
@@ -194,14 +198,12 @@ class Parser(report_sxw.rml_parse):
 
         tz = self._get_user_tz(cr, uid, context=None)
         current_date_local = self._get_current_date(cr, uid, tz, context=None)
-        
         page['header'] = self._get_header_info(cr, uid, current_date_local, threshold_date, category_id, context=None)
-        page['line_title'] = [{'threshold_date': 'xxxx'}]
-
         current_date_utc = current_date_local.astimezone(pytz.utc)
         threshold_date_utc = self._get_threshold_date_utc(cr, uid, threshold_date, tz, context=None)
-        
-        page['lines'] = self._get_lines(cr, uid, current_date_utc, threshold_date_utc, category_id, context=None)
+        periods = self._get_periods(cr, uid, current_date_utc, threshold_date_utc, context=None)
+        page['line_title'] = self._get_line_title(cr, uid, periods, tz, context=None)
+        page['lines'] = self._get_lines(cr, uid, periods, current_date_utc, threshold_date_utc, category_id, context=None)
 
         res.append(page)
 
