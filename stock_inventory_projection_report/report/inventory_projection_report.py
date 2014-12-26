@@ -84,20 +84,37 @@ class Parser(report_sxw.rml_parse):
                     prod = rec['product_id']
                     line_vals[prod][what+`i`] = rec['sum'] 
             i += 1
+        del_prod_list = []
         for prod in line_vals:
-            i = 2
-            for _ in xrange(5):
-                line_vals[prod]['bal'+`i`] = line_vals[prod]['bal'+`i-1`] + line_vals[prod]['in'+`i`] - line_vals[prod]['out'+`i`]
+            i = 0
+            del_flag = True
+            for _ in xrange(7):
+                if line_vals[prod]['out'+`i`]:
+                    del_flag = False
                 i += 1
+            if del_flag:
+                del_prod_list.append(prod)
+            else:
+                i = 2  # start from period "2" (period until threshold date)
+                for _ in xrange(5):
+                    line_vals[prod]['bal'+`i`] = line_vals[prod]['bal'+`i-1`] + line_vals[prod]['in'+`i`] - line_vals[prod]['out'+`i`]
+                    i += 1
+        for del_prod in del_prod_list:
+            del line_vals[del_prod]
         res.append(line_vals)
         return res
   
     def _get_product_ids(self, cr, uid, category_id, context=None):
-        categ = self.pool.get('product.category').browse(cr, uid, category_id)
-        min = categ.parent_left
-        max = categ.parent_right
+        res = []
         prod_obj = self.pool.get('product.product')
-        return prod_obj.search(cr, uid, [('sale_ok','=',True),('type','=','product'),('categ_id','>=',min),('categ_id','<=',max)])
+        if category_id:
+            categ = self.pool.get('product.category').browse(cr, uid, category_id)
+            min = categ.parent_left
+            max = categ.parent_right
+            res = prod_obj.search(cr, uid, [('sale_ok','=',True),('type','=','product'),('categ_id','>=',min),('categ_id','<=',max)])
+        else:
+            res = prod_obj.search(cr, uid, [('sale_ok','=',True)])
+        return res
  
     def _get_periods(self, cr, uid, current_date_utc, threshold_date_utc, context=None):
         periods = {}

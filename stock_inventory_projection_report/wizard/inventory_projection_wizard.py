@@ -17,7 +17,7 @@ class stock_inventory_projection(osv.osv_memory):
 #        return self.pool.get('account.fiscalyear').find(cr, uid, context=context)
     
     _defaults = {
-#        'year_id': _get_fiscalyear
+        'threshold_date': fields.date.context_today,
     }
 
     def show_projection(self, cr, uid, ids, context=None):

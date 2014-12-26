@@ -26,6 +26,7 @@
              <field name="target">new</field>
         </record>
         <menuitem id="menu_stock_inventory_projection"
+            name="Inventory Projection Report"
             action="action_stock_inventory_projection"
             parent="stock.menu_stock_inventory_control"
             sequence="100"/>
