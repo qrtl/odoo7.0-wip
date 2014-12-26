@@ -20,18 +20,22 @@
 ##############################################################################
 
 {
-    'name': 'Inventory Projection Report',
+    'name': 'Shipment Schedule Report',
     'version': '1.0',
     'category': "Report",
     'summary': 'Adds a report function to print stock projection',
     'description': """
+* Adds a menu item 'Shipment Schedule Report'.
+* Shows shipment quantities for future periods for each product (with incoming quantities and projected QOH as well).
+* Shipment and receipt quantities are taken from stock moves; only confirmed orders are considered.
+* This function does not filter output by warehouse/location. 
      """,
     'author': 'Rooms For (Hong Kong) T/A OSCG',
     'depends': ['sale_stock','report_aeroo_ooo','report_aeroo'],
     'init_xml': [],
     'update_xml': [
-        'wizard/inventory_projection_wizard.xml',
-        'inventory_projection.xml',
+        'wizard/shipment_schedule_wizard.xml',
+        'shipment_schedule.xml',
     ],
 
     'demo_xml': [],

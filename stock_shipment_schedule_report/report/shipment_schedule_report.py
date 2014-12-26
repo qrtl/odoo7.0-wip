@@ -1,11 +1,10 @@
 # -*- encoding: utf-8 -*-
+from openerp.osv import fields
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import time
 from report import report_sxw
-import pooler
 import logging
-import tools
 import pytz
 from openerp import SUPERUSER_ID
 
@@ -16,15 +15,15 @@ class Parser(report_sxw.rml_parse):
     def __init__(self, cr, uid, name, context):
         super(Parser, self).__init__(cr, uid, name, context)
         self.localcontext.update( {
-            'print_projection':self.print_projection,
+            'print_schedule':self.print_schedule,
         })
 
-    def set_context(self,objects, data, ids, report_type=None):
-        self.localcontext.update({
-            'threshold_date': data.get('threshold_date',False),
-            'category_id': data.get('category_id',False),
-        })
-        return super(Parser, self).set_context(objects, data, ids, report_type)
+#    def set_context(self,objects, data, ids, report_type=None):
+#        self.localcontext.update({
+#            'threshold_date': data.get('threshold_date', False),
+#            'category_id': data.get('category_id', False),
+#        })
+#        return super(Parser, self).set_context(objects, data, ids, report_type)
 
     def _get_user_tz(self, cr, uid, context=None):
         user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid)
@@ -34,25 +33,87 @@ class Parser(report_sxw.rml_parse):
             tz = pytz.utc
         return tz
     
-    def _get_current_date(self, cr, uid, tz, context=None):
-        sys_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-        return pytz.utc.localize(datetime.strptime(sys_date, '%Y-%m-%d %H:%M:%S')).astimezone(tz)
-    
-    def _get_header_info(self, cr, uid, current_date, threshold_date, category_id, context=None):
+    def _get_header_info(self, cr, uid, dates, threshold_date, category_id, context=None):
         res = []
         if category_id:
             category = self.pool.get('product.category').browse(cr, uid, category_id).name
         else:
             category = 'ALL'
-        
         header_vals = {
-            'report_date': current_date,
+            'report_date': dates['current_date_local'],
             'threshold_date': threshold_date,
             'category': category,
             }
         res.append(header_vals)
         return res
 
+    def _get_dates(self, cr, uid, tz, threshold_date, context=None):
+        res = {}
+        sys_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        res['current_date_local'] = pytz.utc.localize(datetime.strptime(sys_date, '%Y-%m-%d %H:%M:%S')).astimezone(tz)
+        res['current_date_utc'] = res['current_date_local'].astimezone(pytz.utc)
+        threshold_date = datetime.strptime(threshold_date, '%Y-%m-%d')
+        threshold_date_local = tz.localize(threshold_date, is_dst=None)
+        res['threshold_date_utc'] = threshold_date_local.astimezone(pytz.utc)
+        return res
+
+    def _get_periods(self, cr, uid, dates, context=None):
+        periods = {}
+        current_date = dates['current_date_utc']
+        threshold_date = dates['threshold_date_utc']
+        i = 0
+        for _ in xrange(7):
+            if i == 0:  # for "Shipment on Hold" for the first period (period 2)
+                start = current_date - relativedelta(years=100)
+                end = current_date
+            elif i == 1:  # for "Shipment" for the first period (period 2)
+                start = current_date
+                end = threshold_date + relativedelta(days=1)
+            elif i == 2:
+                start = threshold_date - relativedelta(years=100)
+                end = threshold_date + relativedelta(days=1) 
+            else:
+                start = end
+                if not i == 6:
+                    end = start + relativedelta(days=7)
+                else:  # for the last period
+                    end += relativedelta(years=100)
+            periods[i] = {
+                'start': start,
+                'end': end,
+            }
+            i += 1
+        return periods
+
+    def _get_line_title(self, cr, uid, periods, tz, context=None):
+        line_title = []
+        title_vals = {}
+        for p in periods:
+            if p >= 2:  # period 0 and 1 are ignored
+                if p == 2:
+                    start = ''
+                else:
+                    start =  datetime.strftime(periods[p]['start'].astimezone(tz), '%Y-%m-%d')
+                if p == 6:
+                    end = ''
+                else:
+                    end =  datetime.strftime(periods[p]['end'].astimezone(tz) - relativedelta(days=1), '%Y-%m-%d')
+                title_vals['p'+`p`] = start + ' ~ ' + end
+        line_title.append(title_vals)                
+        return line_title
+
+    def _get_product_ids(self, cr, uid, category_id, context=None):
+        res = []
+        prod_obj = self.pool.get('product.product')
+        if category_id:  # select all the categories under the selected category including itself
+            categ = self.pool.get('product.category').browse(cr, uid, category_id)
+            min = categ.parent_left
+            max = categ.parent_right
+            res = prod_obj.search(cr, uid, [('sale_ok','=',True),('type','=','product'),('categ_id','>=',min),('categ_id','<=',max)])
+        else:
+            res = prod_obj.search(cr, uid, [('sale_ok','=',True)])
+        return res
+ 
     def _get_move_qty_data(self, cr, uid, product_ids, periods, line_vals, context=None):
         res = []
         int_loc_ids = self.pool.get('stock.location').search(cr, uid, [('usage','=','internal')])
@@ -60,7 +121,6 @@ class Parser(report_sxw.rml_parse):
         for _ in xrange(7):
             date_from = "'"+str(periods[i]['start'])+"'"
             date_to = "'"+str(periods[i]['end'])+"'"
-            
             for what in ['in', 'out']:
                 if what == 'in':
                     params = ['NOT IN', tuple(int_loc_ids,), 'IN', tuple(int_loc_ids,), tuple(product_ids,), date_from, date_to]
@@ -74,8 +134,8 @@ class Parser(report_sxw.rml_parse):
                     and location_dest_id %s %s
                     and product_id IN %s
                     and state NOT IN ('done', 'cancel')
-                    and m.date_expected >= %s
-                    and m.date_expected < %s
+                    and m.date >= %s
+                    and m.date < %s
                     group by product_id
                     """ % (tuple(params))
                 cr.execute(sql)
@@ -85,7 +145,7 @@ class Parser(report_sxw.rml_parse):
                     line_vals[prod][what+`i`] = rec['sum'] 
             i += 1
         del_prod_list = []
-        for prod in line_vals:
+        for prod in line_vals:  # identify products not to display (if no shipment, no display)
             i = 0
             del_flag = True
             for _ in xrange(7):
@@ -104,50 +164,11 @@ class Parser(report_sxw.rml_parse):
         res.append(line_vals)
         return res
   
-    def _get_product_ids(self, cr, uid, category_id, context=None):
-        res = []
-        prod_obj = self.pool.get('product.product')
-        if category_id:
-            categ = self.pool.get('product.category').browse(cr, uid, category_id)
-            min = categ.parent_left
-            max = categ.parent_right
-            res = prod_obj.search(cr, uid, [('sale_ok','=',True),('type','=','product'),('categ_id','>=',min),('categ_id','<=',max)])
-        else:
-            res = prod_obj.search(cr, uid, [('sale_ok','=',True)])
-        return res
- 
-    def _get_periods(self, cr, uid, current_date_utc, threshold_date_utc, context=None):
-        periods = {}
-        i = 0
-        for _ in xrange(7):
-            if i == 0:
-                start = current_date_utc - relativedelta(years=100)
-                end = current_date_utc
-            elif i == 1:
-                start = current_date_utc
-                end = threshold_date_utc + relativedelta(days=1)
-            elif i == 2:
-                start = threshold_date_utc - relativedelta(years=100)
-                end = threshold_date_utc + relativedelta(days=1) 
-            else:
-                start = end
-                if not i == 6:
-                    end = start + relativedelta(days=7)
-                else:
-                    end += relativedelta(years=100)
-            periods[i] = {
-                'start': start,
-                'end': end,
-            }
-            i += 1
-        return periods
- 
-    def _get_lines(self, cr, uid, periods, current_date_utc, threshold_date_utc, category_id, context=None):
+    def _get_lines(self, cr, uid, periods, category_id, context=None):
         res = []
         line_vals = {}
         product_ids = self._get_product_ids(cr, uid, category_id, context=None)
         prod_obj = self.pool.get('product.product')
-        #periods = self._get_periods(cr, uid, current_date_utc, threshold_date_utc, context=None)
 
         for prod in prod_obj.browse(cr, uid, product_ids):
             line_vals[prod.id] = {
@@ -175,53 +196,24 @@ class Parser(report_sxw.rml_parse):
                 'bal6': 0.0,
             }
         lines = self._get_move_qty_data(cr, uid, product_ids, periods, line_vals, context=None)
-
-        # only append values (without key) to form the list
-        for line in lines:
+        for line in lines:  # only append values (without key) to form the list
             for k, v in line.iteritems():
                 res.append(v)
         res = sorted(res, key=lambda k: k['categ'])
         return res
 
-    def _get_threshold_date_utc(self, cr, uid, threshold_date, tz, context=None):
-        threshold_date = datetime.strptime(threshold_date, '%Y-%m-%d')
-        threshold_date_local = tz.localize(threshold_date, is_dst=None)
-        return threshold_date_local.astimezone(pytz.utc)
-
-    def _get_line_title(self, cr, uid, periods, tz, context=None):
-        line_title = []
-        title_vals = {}
-        for p in periods:
-            if p >= 2:
-                if p == 2:
-                    start = ''
-                else:
-                    start =  datetime.strftime(periods[p]['start'].astimezone(tz), '%Y-%m-%d')
-                if p == 6:
-                    end = ''
-                else:
-                    end =  datetime.strftime(periods[p]['end'].astimezone(tz) - relativedelta(days=1), '%Y-%m-%d')
-                title_vals['p'+`p`] = start + ' ~ ' + end
-        line_title.append(title_vals)                
-        return line_title
-
-    def print_projection(self, data):
+    def print_schedule(self, data):
         res = []
         page = {}
         cr = self.cr
         uid = self.uid
-        threshold_date = self.localcontext.get('threshold_date', False)
-        category_id = self.localcontext.get('category_id', False)
-
+        threshold_date = data['threshold_date'] or False
+        category_id = data['category_id'] or False
         tz = self._get_user_tz(cr, uid, context=None)
-        current_date_local = self._get_current_date(cr, uid, tz, context=None)
-        page['header'] = self._get_header_info(cr, uid, current_date_local, threshold_date, category_id, context=None)
-        current_date_utc = current_date_local.astimezone(pytz.utc)
-        threshold_date_utc = self._get_threshold_date_utc(cr, uid, threshold_date, tz, context=None)
-        periods = self._get_periods(cr, uid, current_date_utc, threshold_date_utc, context=None)
+        dates = self._get_dates(cr, uid, tz, threshold_date, context=None)
+        periods = self._get_periods(cr, uid, dates, context=None)
+        page['header'] = self._get_header_info(cr, uid, dates, threshold_date, category_id, context=None)
         page['line_title'] = self._get_line_title(cr, uid, periods, tz, context=None)
-        page['lines'] = self._get_lines(cr, uid, periods, current_date_utc, threshold_date_utc, category_id, context=None)
-
+        page['lines'] = self._get_lines(cr, uid, periods, category_id, context=None)
         res.append(page)
-
         return res

@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import inventory_projection_wizard
+import shipment_schedule_wizard
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
-
-
