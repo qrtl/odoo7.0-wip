@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="invoice_tree_z1" model="ir.ui.view">
+            <field name="name">invoice.tree.z1</field>  
+            <field name="model">account.invoice</field>
+            <field name="inherit_id" ref="account.invoice_tree"/>
+            <field name="arch" type="xml">
+                <field name="currency_id" position="replace">
+                    <field name="currency_id"/>
+                    <field name="rate"/>
+                </field>
+                <field name="residual" position="replace">
+                    <field name="residual"/>
+                    <field name="residual_base" sum="Balance (Base)"/>
+                </field>
+                <field name="amount_untaxed" position="replace">
+                    <field name="amount_untaxed"/>
+                </field>
+                <field name="amount_total" position="replace">
+                    <field name="amount_total"/>
+                    <field name="amount_total_base" sum="Total (Base)"/>
+                </field>
+            </field>
+        </record>
+    </data>
+</openerp>
