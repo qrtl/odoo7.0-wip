@@ -64,3 +64,13 @@ class MySaleOrderImportMapper(sale.SaleOrderImportMapper):
         if partner_rec.user_id:
             return {'user_id': partner_rec.user_id.id}
         return {'user_id': False}
+
+#     @mapping
+#     def fiscal_position(self, record):
+#         """ Assign the fiscal position of the partner if any """
+#         session = self.session
+#         partner_rec = session.browse('res.partner', self.options.partner_id)
+#         if partner_rec.property_account_position:
+#             return {'fiscal_position': partner_rec.property_account_position.id}
+#         return {'fiscal_position': False}
+
