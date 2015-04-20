@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-#    Author: Joel Grand-Guillaume
-#    Copyright 2013 Camptocamp SA
+#
+#    OpenERP, Open Source Management Solution
+#    Copyright (c) Rooms For (Hong Kong) Limited T/A OSCG. All Rights Reserved
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -14,46 +15,16 @@
 #
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 
-import logging
-import xmlrpclib
-from datetime import datetime, timedelta
-import openerp.addons.decimal_precision as dp
-from openerp.osv import fields, orm
 from openerp.tools.translate import _
-from openerp.addons.connector.connector import ConnectorUnit
-from openerp.addons.connector.session import ConnectorSession
-from openerp.addons.connector.exception import (NothingToDoJob,
-                                                FailedJobError,
-                                                IDMissingInBackend)
-from openerp.addons.connector.queue.job import job
-from openerp.addons.connector.unit.synchronizer import ExportSynchronizer
-from openerp.addons.connector.unit.mapper import (mapping,
-                                                  ImportMapper
-                                                  )
-from openerp.addons.connector_ecommerce.unit.sale_order_onchange import (
-    SaleOrderOnChange)
-from openerp.addons.connector_ecommerce.sale import (ShippingLineBuilder,
-                                                     CashOnDeliveryLineBuilder,
-                                                     GiftOrderLineBuilder)
-# from .unit.backend_adapter import (GenericAdapter,
-#                                    MAGENTO_DATETIME_FORMAT,
-#                                    )
-# from .unit.import_synchronizer import (DelayedBatchImport,
-#                                        MagentoImportSynchronizer
-#                                        )
-# from .exception import OrderImportRuleRetry
-# from .backend import magento
-# from .connector import get_environment
-# from .partner import PartnerImportMapper
+from openerp.addons.connector.unit.mapper import mapping
 from openerp.addons.magentoerpconnect.backend import magento
-from openerp.addons.magentoerpconnect import sale
-
-_logger = logging.getLogger(__name__)
+from openerp.addons.magentoerpconnect.sale import SaleOrderImportMapper
 
 
-@magento(replacing=sale.SaleOrderImportMapper)
-class MySaleOrderImportMapper(sale.SaleOrderImportMapper):
+@magento(replacing=SaleOrderImportMapper)
+class MySaleOrderImportMapper(SaleOrderImportMapper):
     _model_name = 'magento.sale.order'
  
     @mapping
@@ -63,14 +34,8 @@ class MySaleOrderImportMapper(sale.SaleOrderImportMapper):
         partner_rec = session.browse('res.partner', self.options.partner_id)
         if partner_rec.user_id:
             return {'user_id': partner_rec.user_id.id}
+        user_ids = session.search('res.users',
+            [('magento_salesperson_default','=',True)])
+        if user_ids:
+            return {'user_id': user_ids[0]}
         return {'user_id': False}
-
-#     @mapping
-#     def fiscal_position(self, record):
-#         """ Assign the fiscal position of the partner if any """
-#         session = self.session
-#         partner_rec = session.browse('res.partner', self.options.partner_id)
-#         if partner_rec.property_account_position:
-#             return {'fiscal_position': partner_rec.property_account_position.id}
-#         return {'fiscal_position': False}
-

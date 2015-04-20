@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-##############################################################################
 #
-#    Author: Guewen Baconnier
-#    Copyright 2013 Camptocamp SA
+#    OpenERP, Open Source Management Solution
+#    Copyright (c) Rooms For (Hong Kong) Limited T/A OSCG. All Rights Reserved
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -17,7 +16,6 @@
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-##############################################################################
 
 from openerp.addons.connector.connector import install_in_connector
 
